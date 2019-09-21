@@ -98,7 +98,7 @@ Buffer<Coords<float>> gyroBuffer{};
 #define gpsSerial Serial1
 
 String textMessage = "", mainNumber = "+639503610262";
-unsigned long previousMillisAlarm = 0, previousMillisGyro = 0, previousMillisResponse = 0;
+unsigned long previousMillisAlarm = 0, previousMillisGyro = 0, previousMillisResponse = 0, previousAccident = 0;
 double Lat = 0.0, Lon = 0.0;
 const byte buzz = 13, btn = 4;
 int gpsData[6], replyFlag;
@@ -138,38 +138,7 @@ void setup() {
 }
 
 void loop() {
-  while(gpsSerial.available()>0){
-    if(!gpsWarn){
-      gpsWarn = true;
-    }
-    if(gps.encode(gpsSerial.read())){
-      if(gps.date.isValid()&&gps.time.isValid()&&gps.location.isValid()){
-        gpsData[0] = gps.date.month();
-        gpsData[1] = gps.date.day();
-        gpsData[2] = gps.date.year();
-        gpsData[3] = gps.time.hour();
-        gpsData[4] = gps.time.minute();
-        gpsData[5] = int(gps.speed.kmph());
-        Lat = gps.location.lat();
-        Lon = gps.location.lng();
-        gpsAvailability = true;
-        if(!location_warn){
-          send_msg("GPS Location Available", mainNumber);
-          location_warn = true;
-        }
-      }
-    }
-  }
-  if(millis()>5000&&gps.charsProcessed()<10){
-    gpsAvailability = false;
-    Serial.println("no gps");
-  }
-  //delay(100);
-  #ifndef NGPSDEBUG
-  Serial.println(String(Lon, 5) + "," + String(Lat, 5));
-  #endif
-  recv_msg();
-  Tilt();
+  mainloop();
   if (!isAccident) {
     previousMillisResponse = millis();
     digitalWrite(buzz,LOW);
@@ -193,14 +162,13 @@ void loop() {
     accidentResponseCancel();
     accidentResponse();
     sprintf(str1,"AccidentDetected");
-    sprintf(str2, "             %2d", 20-(millis()-previousMillisResponse)/1000);
+    sprintf(str2, "              %2d", 20-(millis()-previousMillisResponse)/1000);
   }
 
   #ifndef NGYRODEBUG
   recordGyroRegisters();
   printCoords(gForce);
   #endif
-  lcdPrint();
   
 }
 
@@ -215,10 +183,9 @@ void accidentResponse() {
     isAccident = false;
     digitalWrite(buzz, LOW);
     sprintf(str1,"sending sms rqst");
-    sprintf(str2,"pls stand by");
-    lcdPrint();
+    sprintf(str2,"pls stand by    ");
     while(tilted){
-      Tilt();
+      mainloop();
     }
     
   }
@@ -598,8 +565,12 @@ void Tilt() {
   recordAccelRegisters();
   
   if (gForce.X > 0.8 || gForce.Y > 0.8 || gForce.Z > 0.8) {
-    if(!tilted && !isAccident) isAccident = true;
+    if(!tilted && !isAccident && 30<(millis()-previousAccident)/1000){
+      isAccident = true;
+      previousAccident = millis();
+    }
     tilted = true;
+    
   }else{
     tilted = false;
   }
@@ -618,6 +589,41 @@ void printCoords(Coords<T> coords) {
   Serial.println(coords.Z);
 }
 
+void mainloop(){
+  while(gpsSerial.available()>0){
+    if(!gpsWarn){
+      gpsWarn = true;
+    }
+    if(gps.encode(gpsSerial.read())){
+      if(gps.date.isValid()&&gps.time.isValid()&&gps.location.isValid()){
+        gpsData[0] = gps.date.month();
+        gpsData[1] = gps.date.day();
+        gpsData[2] = gps.date.year();
+        gpsData[3] = gps.time.hour();
+        gpsData[4] = gps.time.minute();
+        gpsData[5] = int(gps.speed.kmph());
+        Lat = gps.location.lat();
+        Lon = gps.location.lng();
+        gpsAvailability = true;
+        if(!location_warn){
+          send_msg("GPS Location Available", mainNumber);
+          location_warn = true;
+        }
+      }
+    }
+  }
+  if(millis()>5000&&gps.charsProcessed()<10){
+    gpsAvailability = false;
+    Serial.println("no gps");
+  }
+  //delay(100);
+  #ifndef NGPSDEBUG
+  Serial.println(String(Lon, 5) + "," + String(Lat, 5));
+  #endif
+  recv_msg();
+  Tilt();
+  lcdPrint();
+}
 
 // +CMT: "+639503610262","","19/08/23,21:13:18+32"
 // Tndnxnc

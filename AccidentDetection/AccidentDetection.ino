@@ -1,4 +1,4 @@
-//test change
+//test change 
 #include <Wire.h>
 #include <LiquidCrystal_I2C.h>
 #include <TinyGPS++.h>
@@ -109,6 +109,7 @@ LiquidCrystal_I2C lcd(0x27, 16, 2);
 
 void setup() {
   pinMode(btn, INPUT_PULLUP);
+  pinMode(buzz, OUTPUT);
   Serial.begin(9600);
   gpsSerial.begin(9600);
   sim.begin(9600);
@@ -125,6 +126,7 @@ void setup() {
   lcd.backlight();
   lcd.clear();
   setupMPU();
+  calibrate();
   getCompensateVal();
   send_msg("Accident Detection System Started\n\nDrive safely and God bless.", "9503610262");
   
@@ -133,7 +135,6 @@ void setup() {
   //BT.println("Device Started");
   // BT.begin(9600);
   // delay(1000);
-  calibrate();
 }
 
 void loop() {
@@ -169,7 +170,7 @@ void loop() {
   #endif
   recv_msg();
   if (!isAccident) {
-    analogWrite(buzz,0);
+    digitalWrite(buzz,LOW);
     delay(500);
     Tilt();
   
@@ -181,7 +182,7 @@ void loop() {
 
     // btGetString();
   } else {
-    analogWrite(buzz,255);
+    digitalWrite(buzz,HIGH);
     accidentResponseCancel();
     //accidentResponse();
   }

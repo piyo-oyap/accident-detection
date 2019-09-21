@@ -41,7 +41,7 @@ struct AlarmVars {
   int Repetition, OnInterval, OffInterval;
   int * ptrCurInterval;
   bool flagEnabled, flagOngoing;
-  byte Sensitivity;
+  byte Sensitivity, gpsAvailability = false;
   AlarmVars() : Repetition{0}, OnInterval{0}, OffInterval{0}, ptrCurInterval{nullptr},
                 flagEnabled{false}, flagOngoing{false}, Sensitivity{0}  { }
 };
@@ -102,12 +102,16 @@ unsigned long previousMillisAlarm = 0, previousMillisGyro = 0, previousMillisRes
 double Lat = 0.0, Lon = 0.0;
 const byte buzz = 13, btn = 4;
 int gpsData[6], replyFlag;
-bool gpsWarn = false, location_warn = false, parkAlarmEnabled = false, isAccident = false;
+bool gpsWarn = false, location_warn = false, parkAlarmEnabled = false, isAccident = false, gpsAvailability = false, tilted = false;
 char str1[32], str2[32];
 TinyGPSPlus gps;
 LiquidCrystal_I2C lcd(0x27, 16, 2);
 
 void setup() {
+  lcd.begin();
+  lcd.backlight();
+  lcd.clear();
+  lcd.print("BOOTING UP . . .");
   pinMode(btn, INPUT_PULLUP);
   pinMode(buzz, OUTPUT);
   Serial.begin(9600);
@@ -118,13 +122,9 @@ void setup() {
   Wire.begin();
   delay(1000);
   sim.print("AT+ CMGF=1\r");
-  delay(1000);
   sim.print("AT+CNMI=2,2,0,0,0\r");
-  delay(1000);
   sim.print("AT+CMGD=1,3\r");
-  lcd.begin();
-  lcd.backlight();
-  lcd.clear();
+  
   setupMPU();
   calibrate();
   getCompensateVal();
@@ -152,6 +152,7 @@ void loop() {
         gpsData[5] = int(gps.speed.kmph());
         Lat = gps.location.lat();
         Lon = gps.location.lng();
+        gpsAvailability = true;
         if(!location_warn){
           send_msg("GPS Location Available", mainNumber);
           location_warn = true;
@@ -160,37 +161,45 @@ void loop() {
     }
   }
   if(millis()>5000&&gps.charsProcessed()<10){
-    sprintf(str1, "     No GPS     ");
-    sprintf(str2, " Check Wiring . ");
-    lcdPrint();
+    gpsAvailability = false;
+    Serial.println("no gps");
   }
   //delay(100);
   #ifndef NGPSDEBUG
   Serial.println(String(Lon, 5) + "," + String(Lat, 5));
   #endif
   recv_msg();
+  Tilt();
   if (!isAccident) {
     digitalWrite(buzz,LOW);
     delay(500);
-    Tilt();
+    
   
     Gyro();
 
     Alarm();
-    delay(500);
     
-
+    if(gpsAvailability){
+      sprintf(str1, "                ");
+      sprintf(str2, "                ");
+    }else{
+      sprintf(str1, "     No GPS     ");
+      sprintf(str2, "  Check Wiring  ");
+    }
     // btGetString();
   } else {
     digitalWrite(buzz,HIGH);
     accidentResponseCancel();
     //accidentResponse();
+    sprintf(str1,"AccidentDetected");
+    sprintf(str2, "               ");
   }
 
   #ifndef NGYRODEBUG
   recordGyroRegisters();
   printCoords(gForce);
   #endif
+  lcdPrint();
   
 }
 
@@ -203,6 +212,10 @@ void accidentResponse() {
       send_msg("Requesting assistance for vehicular accident, unfortunately the location was not determined during the accident.", mainNumber);
     }
     isAccident = false;
+    sprintf(str1,"sending sms rqst");
+    sprintf(str2,"pls stand by");
+    lcdPrint();
+    
   }
 }
 
@@ -213,6 +226,10 @@ void accidentResponseCancel() {
     if (millis() - previousMillisCancel > 5000) {
       isAccident = false;
       Serial.println("Request for assistance is cancelled.");
+      sprintf(str1, "Assist Rqst     ");
+      sprintf(str2, "Cancelled       ");
+      lcdPrint();
+      delay(3000);
       break;
     }
   }
@@ -576,8 +593,11 @@ void Tilt() {
   recordAccelRegisters();
   
   if (gForce.X > 0.8 || gForce.Y > 0.8 || gForce.Z > 0.8) {
-    isAccident = true;
+    if(!tilted && !isAccident) isAccident = true;
+    tilted = true;
     previousMillisResponse = millis();
+  }else{
+    tilted = false;
   }
   
   #ifndef NACCELDEBUG

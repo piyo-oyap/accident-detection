@@ -126,7 +126,7 @@ void setup() {
   sim.print("AT+CMGD=1,3\r");
   
   setupMPU();
-  calibrate();
+//  calibrate();
   getCompensateVal();
   send_msg("Accident Detection System Started\n\nDrive safely and God bless.", "9503610262");
   
@@ -171,6 +171,7 @@ void loop() {
   recv_msg();
   Tilt();
   if (!isAccident) {
+    previousMillisResponse = millis();
     digitalWrite(buzz,LOW);
     delay(500);
     
@@ -190,9 +191,9 @@ void loop() {
   } else {
     digitalWrite(buzz,HIGH);
     accidentResponseCancel();
-    //accidentResponse();
+    accidentResponse();
     sprintf(str1,"AccidentDetected");
-    sprintf(str2, "               ");
+    sprintf(str2, "             %2d", 20-(millis()-previousMillisResponse)/1000);
   }
 
   #ifndef NGYRODEBUG
@@ -212,9 +213,13 @@ void accidentResponse() {
       send_msg("Requesting assistance for vehicular accident, unfortunately the location was not determined during the accident.", mainNumber);
     }
     isAccident = false;
+    digitalWrite(buzz, LOW);
     sprintf(str1,"sending sms rqst");
     sprintf(str2,"pls stand by");
     lcdPrint();
+    while(tilted){
+      Tilt();
+    }
     
   }
 }
@@ -595,7 +600,6 @@ void Tilt() {
   if (gForce.X > 0.8 || gForce.Y > 0.8 || gForce.Z > 0.8) {
     if(!tilted && !isAccident) isAccident = true;
     tilted = true;
-    previousMillisResponse = millis();
   }else{
     tilted = false;
   }

@@ -9,7 +9,7 @@
 #define NGYRODEBUG
 #define NALARMDEBUG
 //#define NACCELDEBUG
-#define NGPSDEBUG
+//#define NGPSDEBUG
 #define NBTDEBUG
 #define NBLUETOOTH
 
@@ -93,9 +93,8 @@ Coords<float> gForce, rot, compensateVal;
 AlarmVars alarm{};
 Buffer<Coords<float>> gyroBuffer{};
 
-#define sim Serial3
+#define S808 Serial3
 #define BT Serial2
-#define gpsSerial Serial1
 
 String textMessage = "", mainNumber = "+639503610262";
 unsigned long previousMillisAlarm = 0, previousMillisGyro = 0, previousMillisResponse = 0, previousAccident = 0;
@@ -117,15 +116,14 @@ void setup() {
   pinMode(btn, INPUT_PULLUP);
   pinMode(buzz, OUTPUT);
   Serial.begin(9600);
-  gpsSerial.begin(9600);
-  sim.begin(9600);
   BT.begin(9600);
-  sim.begin(9600);
   Wire.begin();
   delay(1000);
-  sim.print("AT+ CMGF=1\r");
-  sim.print("AT+CNMI=2,2,0,0,0\r");
-  sim.print("AT+CMGD=1,3\r");
+  S808.begin(9600);
+  S808.print("AT+CGPSPWR=1\r\n");
+  S808.print("AT+ CMGF=1\r");
+  S808.print("AT+CNMI=2,2,0,0,0\r");
+  S808.print("AT+CMGD=1,3\r");
   
   setupMPU();
 //  calibrate();
@@ -173,6 +171,38 @@ void loop() {
   printCoords(gForce);
   #endif
   
+}
+
+void getGPS() {
+  S808.flush();
+  unsigned int previousMillis = millis();
+  S808.print("AT+CGPSOUT=32\r\n");
+  while (millis() - previousMillis < 3000) {
+    char temp = (char)S808.read();
+    Serial.print(temp);
+    if (gps.encode(temp)) {
+      if(gps.date.isValid()&&gps.time.isValid()&&gps.location.isValid()){
+        gpsData[0] = gps.date.month();
+        gpsData[1] = gps.date.day();
+        gpsData[2] = gps.date.year();
+        gpsData[3] = gps.time.hour();
+        gpsData[4] = gps.time.minute();
+        gpsData[5] = int(gps.speed.kmph());
+        Lat = gps.location.lat();
+        Lon = gps.location.lng();
+        gpsAvailability = true;
+        if(!location_warn){
+          send_msg("GPS Location Available", mainNumber);
+          location_warn = true;
+        }
+        Serial.println("getGPS: Success");
+        S808.print("AT+CGPSOUT=0\r\n");
+        return;
+      }
+      
+    }
+  }
+  S808.print("AT+CGPSOUT=0\r\n");
 }
 
 void accidentResponse() {
@@ -264,17 +294,22 @@ void lcdPrint(){
 
 void recv_msg(){
   
-  if(sim.available()){
-    textMessage = sim.readString();
-    Serial.println(textMessage);
+  if(S808.available()){
+    textMessage = "";
+    while (S808.available()) {
+      textMessage += (char)S808.read();
+      delay(5);
+    }
+    
     delay(100);
     textMessage.toLowerCase();
+    Serial.println(textMessage);
     if(textMessage.indexOf("+cmgf: 0")>0 || textMessage.indexOf("+cmti")>0 ){
-      sim.print("AT+ CMGF=1\r");
+      S808.print("AT+ CMGF=1\r");
       analogWrite(buzz,255);
       delay(50);
       analogWrite(buzz,0);
-      sim.print("AT+CNMI=2,2,0,0,0\r");
+      S808.print("AT+CNMI=2,2,0,0,0\r");
       delay(50);
       analogWrite(buzz,255);
       delay(50);
@@ -283,7 +318,7 @@ void recv_msg(){
     if (textMessage.indexOf("+cmt")>0) {
       analogWrite(buzz,255);
       //getPhoneNumber();
-      sim.print("AT+CMGD=1,3\r"); //deletes recv read sms
+      S808.print("AT+CMGD=1,3\r"); //deletes recv read sms
       delay(250);
       analogWrite(buzz,0);
     }
@@ -311,9 +346,9 @@ void recv_msg(){
     }else if(textMessage.indexOf("alarm 3")>0){
       alarm.Sensitivity = 3;
     }else if(textMessage.indexOf("power down") > 0){
-      sim.print("AT+ CMGF=1\r");
+      S808.print("AT+ CMGF=1\r");
       delay(50);
-      sim.print("AT+CNMI=2,2,0,0,0\r");
+      S808.print("AT+CNMI=2,2,0,0,0\r");
       delay(50);
     }else if(textMessage.indexOf("calibrate")){
       calibrate();
@@ -324,16 +359,18 @@ void recv_msg(){
 }
 
 void send_msg(String txt, String number){
-  sim.print("AT+CMGF=1\r");
+  #ifdef ENABLE_SMS
+  S808.print("AT+CMGF=1\r");
   delay(100);
-  sim.println("AT+CMGS=\""+ number +"\"");
+  S808.println("AT+CMGS=\""+ number +"\"");
   delay(100);
-  sim.println(txt);
+  S808.print(txt);
   delay(100);
-  sim.println((char)26);
+  S808.println((char)26);
   delay(1000);
-  sim.println();
+  S808.println();
   delay(2000);
+  #endif
 }
 
 void btCom(String x){
@@ -593,32 +630,11 @@ void printCoords(Coords<T> coords) {
 }
 
 void mainloop(){
-  while(gpsSerial.available()>0){
-    if(!gpsWarn){
-      gpsWarn = true;
-    }
-    if(gps.encode(gpsSerial.read())){
-      if(gps.date.isValid()&&gps.time.isValid()&&gps.location.isValid()){
-        gpsData[0] = gps.date.month();
-        gpsData[1] = gps.date.day();
-        gpsData[2] = gps.date.year();
-        gpsData[3] = gps.time.hour();
-        gpsData[4] = gps.time.minute();
-        gpsData[5] = int(gps.speed.kmph());
-        Lat = gps.location.lat();
-        Lon = gps.location.lng();
-        gpsAvailability = true;
-        if(!location_warn){
-          send_msg("GPS Location Available", mainNumber);
-          location_warn = true;
-        }
-      }
-    }
-  }
   if(millis()>5000&&gps.charsProcessed()<10){
     gpsAvailability = false;
     Serial.println("no gps");
   }
+  getGPS();
   //delay(100);
   #ifndef NGPSDEBUG
   Serial.println(String(Lon, 5) + "," + String(Lat, 5));

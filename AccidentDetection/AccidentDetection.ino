@@ -112,6 +112,8 @@ void setup() {
   lcd.backlight();
   lcd.clear();
   lcd.print("BOOTING UP . . .");
+  lcd.setCursor(0,1);
+  lcd.print("Keep Safe Always");
   pinMode(btn, INPUT_PULLUP);
   pinMode(buzz, OUTPUT);
   Serial.begin(9600);
@@ -135,6 +137,7 @@ void setup() {
   //BT.println("Device Started");
   // BT.begin(9600);
   // delay(1000);
+  lcd.clear();
 }
 
 void loop() {
@@ -150,8 +153,8 @@ void loop() {
     Alarm();
     
     if(gpsAvailability){
-      sprintf(str1, "                ");
-      sprintf(str2, "                ");
+      sprintf(str1, "    %3d KpH     ", gpsData[5]);
+      sprintf(str2, "      %2d:%2d     ", gpsData[3], gpsData[4]);
     }else{
       sprintf(str1, "     No GPS     ");
       sprintf(str2, "  Check Wiring  ");

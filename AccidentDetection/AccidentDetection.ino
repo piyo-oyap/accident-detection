@@ -13,6 +13,8 @@
 #define NBTDEBUG
 #define NBLUETOOTH
 
+#define ENABLE_SMS
+
 #define GYROBUFFERSIZE 15
 #define GYROINTERVAL 250
 
@@ -124,6 +126,8 @@ void setup() {
   S808.print("AT+ CMGF=1\r");
   S808.print("AT+CNMI=2,2,0,0,0\r");
   S808.print("AT+CMGD=1,3\r");
+  delay(100);
+  S808.print("AT+CGPSOUT=32\r\n");
   
   setupMPU();
 //  calibrate();
@@ -176,7 +180,6 @@ void loop() {
 void getGPS() {
   S808.flush();
   unsigned int previousMillis = millis();
-  S808.print("AT+CGPSOUT=32\r\n");
   while (millis() - previousMillis < 3000) {
     char temp = (char)S808.read();
     Serial.print(temp);
@@ -196,19 +199,18 @@ void getGPS() {
           location_warn = true;
         }
         Serial.println("getGPS: Success");
-        S808.print("AT+CGPSOUT=0\r\n");
-        return;
+        break;
       }
       
     }
   }
-  S808.print("AT+CGPSOUT=0\r\n");
+  //S808.print("AT+CGPSOUT=0\r\n");
 }
 
 void accidentResponse() {
   if (millis() - previousMillisResponse > 20000) {
     if (Lat > 0.0 || Lon > 0.0){
-      send_msg("Requesting assistance for vehicular accident at coordinates: https://www.google.com/maps/place/" + String(Lon,5) + "," + String(Lat,5) , mainNumber);
+      send_msg("Requesting assistance for vehicular accident at coordinates: https://www.google.com/maps/place/" + String(Lat,5) + "," + String(Lon,5) , mainNumber);
     }
     else {
       send_msg("Requesting assistance for vehicular accident, unfortunately the location was not determined during the accident.", mainNumber);
@@ -637,7 +639,7 @@ void mainloop(){
   getGPS();
   //delay(100);
   #ifndef NGPSDEBUG
-  Serial.println(String(Lon, 5) + "," + String(Lat, 5));
+  Serial.println(String(Lat, 5) + "," + String(Lon, 5));
   #endif
   recv_msg();
   Tilt();
